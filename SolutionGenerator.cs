@@ -44,7 +44,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Reflection;
-
+using System.Text.RegularExpressions;
 using Microsoft.Build.BuildEngine;
 
 namespace SolGen
@@ -141,6 +141,7 @@ namespace SolGen
             string probe = null;
             string refs = null;
             string ignore = null;
+            string ignorePattern = null;
             string overwrite = null;
             string solution = null;
 
@@ -158,6 +159,7 @@ namespace SolGen
                 GetArg(str, "/hintpath:", ref arguments.HintPath);
                 GetArg(str, "/root:", ref arguments.RootFolder);
                 GetArg(str, "/ignore:", ref ignore);
+                GetArg(str, "/ignorePattern:", ref ignorePattern);
                 GetArg(str, "/refs:", ref refs);
                 GetArg(str, "/overwrite", ref overwrite);
                 GetArg(str, "/solution:", ref solution);
@@ -180,8 +182,13 @@ namespace SolGen
 
             if (ignore != null)
             {
-                string[] ignores = ignore.Split(new[] { ';', ',' });
-                arguments.Ignore = new List<string>(Array.ConvertAll(ignores, element => Path.GetFullPath(element)));
+                var ignores = ignore.Split(new[] { ';', ',' });
+                arguments.Ignore = new List<string>(Array.ConvertAll(ignores, Path.GetFullPath));
+            }
+            arguments.IgnorePattern = new List<string>();
+            if (ignorePattern != null)
+            {
+                arguments.IgnorePattern = ignorePattern.Split(new[] { ';', ',' }).Select(s => s.Trim()).ToList();
             }
 
             if (overwrite != null)
@@ -332,6 +339,12 @@ namespace SolGen
         /// </summary>
         private void ProcessProject(string folder, string file)
         {
+            // ignore projects that match to the IgnorePattern
+            if (_arguments.IgnorePattern.Any(pattern => Regex.IsMatch(file, pattern)))
+            {
+                return;
+            }
+
             // ignore projects that *we* created...
             if ((file.EndsWith(ProjectRefs + CsProjFileExtension)) ||
                 (file.EndsWith(AssemblyRefs + CsProjFileExtension)))

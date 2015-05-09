@@ -15,6 +15,7 @@ namespace SolGen
         public string HintPath = null;
         public string RootFolder = null;
         public List<string> Ignore = null;
+        public List<string> IgnorePattern = null; 
         public bool Overwrite = false;
         public SolutionTypes Solution = SolutionTypes.Flat;
     }
