@@ -41,6 +41,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Reflection;
 
@@ -54,92 +55,45 @@ namespace SolGen
         #region Constants
         private const string ProjectRefs = ".projRefs";
         private const string AssemblyRefs = ".dllRefs";
-        private const string CSProjFileExtension = ".csproj";
+        private const string CsProjFileExtension = ".csproj";
         private const string SolutionFileExtension = ".sln";
-        private const string AllProjectsSolutionFileName = "all";
         private const string AssemblyName = "AssemblyName";
         private const string ProjectGuid = "ProjectGuid";
-        private const string AllCSProj = "*" + CSProjFileExtension;
+        private const string AllCsProj = "*" + CsProjFileExtension;
         private const string AllFiles = "*.*";
-        private const string AllDLLs = "*.dll";
-        private const string AllSLNs = "*.sln";
         private const string Reference = "Reference";
         private const string ProjectReference = "ProjectReference";
         private const string Project = "Project";
-        private const string Obj = @"\obj\";
 
         // From Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\8.0\Projects\
-        private const string CSProjGUID = "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}";
-        private const string FolderGUID = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}";
+        private const string CsProjGuid = "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}";
+        private const string FolderGuid = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}";
         
         #endregion
 
         #region Enums
-        private enum RefTypes
-        {
-            Assembly,
-            Project,
-            Both
-        }
 
-        private enum SolutionTypes
-        {
-            Flat,
-            Deep
-        }
         #endregion
 
         #region Members
-        private readonly IDictionary<string, ProjectInfo> m_ProjectsByName = new Dictionary<string, ProjectInfo>();
-        private readonly IDictionary<string, ProjectInfo> m_ProjectsByFile = new Dictionary<string, ProjectInfo>();
-        private readonly IDictionary<string, ProjectInfo> m_ProjectsByGuid = new Dictionary<string, ProjectInfo>();
-        private readonly IDictionary<string, ProjectInfo> m_FoldersByPath  = new Dictionary<string, ProjectInfo>();
-        private readonly IList<ProjectInfo> m_AssemblyRefProjectFilesHandled = new List<ProjectInfo>();
-        private readonly IList<ProjectInfo> m_ProjectRefProjectFilesHandled = new List<ProjectInfo>();
-        private readonly IList<string> m_ProjectFiles = new List<string>();
+        private readonly IDictionary<string, ProjectInfo> _projectsByName = new Dictionary<string, ProjectInfo>();
+        private readonly IDictionary<string, ProjectInfo> _projectsByFile = new Dictionary<string, ProjectInfo>();
+        private readonly IDictionary<string, ProjectInfo> _projectsByGuid = new Dictionary<string, ProjectInfo>();
+        private readonly IDictionary<string, ProjectInfo> _foldersByPath  = new Dictionary<string, ProjectInfo>();
+        private readonly IList<ProjectInfo> _assemblyRefProjectFilesHandled = new List<ProjectInfo>();
+        private readonly IList<ProjectInfo> _projectRefProjectFilesHandled = new List<ProjectInfo>();
+        private readonly IList<string> _projectFiles = new List<string>();
         private readonly Engine m_Engine = new Engine();
 
-        private Arguments m_Arguments = new Arguments();
+        private Arguments _arguments = new Arguments();
 
         #endregion
 
         #region Private sub-classes
 
-        /// <summary>
-        /// Represents a project reference or loaded project.
-        /// </summary>
-        private class ProjectInfo
-        {
-            public string ProjectName = null;
-            public string ProjectGuid = null;
-            public string Filename = null;
-            public string AssemblyName = null;
-            public string FolderGuid = null;
 
-            // list of assemblynames
-            public List<string> References = new List<string>();
 
-            public Project MSBuildProject;
 
-            public ProjectInfo ShallowCopy()
-            {
-                return (ProjectInfo)this.MemberwiseClone();
-            }
-        }
-
-        /// <summary>
-        /// Represents command-line arguments.
-        /// </summary>
-        private class Arguments
-        {
-            public List<string> ProbeFolders = null;
-            public RefTypes Refs = RefTypes.Both;
-            public string HintPath = null;
-            public string RootFolder = null;
-            public List<string> Ignore = null;
-            public bool Overwrite = false;
-            public SolutionTypes Solution = SolutionTypes.Flat;
-        }
         #endregion
 
         #region Private methods
@@ -226,7 +180,7 @@ namespace SolGen
 
             if (ignore != null)
             {
-                string[] ignores = ignore.Split(new char[] { ';', ',' });
+                string[] ignores = ignore.Split(new[] { ';', ',' });
                 arguments.Ignore = new List<string>(Array.ConvertAll(ignores, element => Path.GetFullPath(element)));
             }
 
@@ -258,16 +212,13 @@ namespace SolGen
 
             if (probe != null)
             {
-                string[] probes = probe.Split(new char[] { ';', ',' });
+                var probes = probe.Split(new[] { ';', ',' });
                 arguments.ProbeFolders = new List<string>(probes);
-                foreach (string probeFolder in arguments.ProbeFolders)
+                foreach (var probeFolder in arguments.ProbeFolders.Where(f => !Directory.Exists(f)))
                 {
-                    if (!Directory.Exists(probeFolder))
-                    {
-                        Console.WriteLine("\nSpecified probe folder does not exists.");
-                        Console.WriteLine(probeFolder);
-                        return false;
-                    }
+                    Console.WriteLine("\nSpecified probe folder does not exists.");
+                    Console.WriteLine(probeFolder);
+                    return false;
                 }
             }
             else
@@ -309,7 +260,7 @@ namespace SolGen
 
         private static string GetAssemblyNameFromFullyQualifiedName(string fullyQualifiedName)
         {
-            string assemblyName = fullyQualifiedName;
+            var assemblyName = fullyQualifiedName ?? string.Empty;
             if (assemblyName.IndexOf(",") != -1)
             {
                 assemblyName = assemblyName.Remove(assemblyName.IndexOf(","));
@@ -319,11 +270,11 @@ namespace SolGen
 
         private static string GetRelativePath(string fromPath, string toPath)
         {
-            string[] fromDirectories = fromPath.Split(Path.DirectorySeparatorChar);
-            string[] toDirectories = toPath.Split(Path.DirectorySeparatorChar);
+            var fromDirectories = fromPath.Split(Path.DirectorySeparatorChar);
+            var toDirectories = toPath.Split(Path.DirectorySeparatorChar);
 
             // Get the shortest of the two paths
-            int length = fromDirectories.Length < toDirectories.Length
+            var length = fromDirectories.Length < toDirectories.Length
                              ? fromDirectories.Length
                              : toDirectories.Length;
 
@@ -350,7 +301,7 @@ namespace SolGen
             }
 
             // Add the required number of "..\" to move up to common root level
-            StringBuilder relativePath = new StringBuilder();
+            var relativePath = new StringBuilder();
             for (index = lastCommonRoot + 1; index < fromDirectories.Length; index++)
             {
                 relativePath.Append(".." + Path.DirectorySeparatorChar);
@@ -368,19 +319,8 @@ namespace SolGen
 
         private static bool IsInIgnoreList(string folder, IEnumerable<string> ignoreList)
         {
-            bool ret = false;
-            if (folder != null && ignoreList != null)
-            {
-                foreach (string ignore in ignoreList)
-                {
-                    if (folder.StartsWith(ignore, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        ret = true;
-                        break;
-                    }
-                }
-            }
-            return ret;
+            return folder != null && ignoreList != null &&
+                   ignoreList.Any(ignore => folder.StartsWith(ignore, StringComparison.InvariantCultureIgnoreCase));
         }
 
         #endregion
@@ -393,22 +333,24 @@ namespace SolGen
         private void ProcessProject(string folder, string file)
         {
             // ignore projects that *we* created...
-            if ((file.EndsWith(ProjectRefs + CSProjFileExtension)) ||
-                (file.EndsWith(AssemblyRefs + CSProjFileExtension)))
+            if ((file.EndsWith(ProjectRefs + CsProjFileExtension)) ||
+                (file.EndsWith(AssemblyRefs + CsProjFileExtension)))
             {
                 return;
             }
 
-            m_ProjectFiles.Add(file);
+            _projectFiles.Add(file);
 
-            string qualifiedFile = Path.Combine(folder, file);
+            var qualifiedFile = Path.Combine(folder, file);
             Project project = new Project(m_Engine);
             project.Load(qualifiedFile);
 
-            ProjectInfo pinfo = new ProjectInfo();
-            pinfo.MSBuildProject = project;
-            pinfo.ProjectName = Path.GetFileNameWithoutExtension(file);
-            pinfo.Filename = qualifiedFile;
+            ProjectInfo pinfo = new ProjectInfo
+            {
+                MsBuildProject = project,
+                ProjectName = Path.GetFileNameWithoutExtension(file),
+                Filename = qualifiedFile
+            };
 
             foreach (BuildPropertyGroup buildPropertyGroup in project.PropertyGroups)
             {
@@ -433,9 +375,9 @@ namespace SolGen
             Debug.Assert(pinfo.AssemblyName != null);
             Debug.Assert(pinfo.ProjectGuid != null);
 
-            if (m_ProjectsByName.ContainsKey(pinfo.AssemblyName.ToUpper()))
+            if (_projectsByName.ContainsKey(pinfo.AssemblyName.ToUpper()))
             {
-                ProjectInfo existing = m_ProjectsByName[pinfo.AssemblyName.ToUpper()];
+                ProjectInfo existing = _projectsByName[pinfo.AssemblyName.ToUpper()];
 
                 Console.WriteLine("\nThe project " + pinfo.ProjectName);
                 Console.WriteLine("With assembly name " + pinfo.AssemblyName);
@@ -444,25 +386,25 @@ namespace SolGen
             }
             else
             {
-                m_ProjectsByName.Add(pinfo.AssemblyName.ToUpper(), pinfo);
+                _projectsByName.Add(pinfo.AssemblyName.ToUpper(), pinfo);
             }
 
             // only record the project if it's not already there
-            if (!m_ProjectsByFile.ContainsKey(pinfo.Filename.ToUpper()))
+            if (!_projectsByFile.ContainsKey(pinfo.Filename.ToUpper()))
             {
-                m_ProjectsByFile.Add(pinfo.Filename.ToUpper(), pinfo);
+                _projectsByFile.Add(pinfo.Filename.ToUpper(), pinfo);
             }
 
             // keep a record of the project keyed by its GUID
-            if (!m_ProjectsByGuid.ContainsKey(pinfo.ProjectGuid))
+            if (!_projectsByGuid.ContainsKey(pinfo.ProjectGuid))
             {
-                m_ProjectsByGuid.Add(pinfo.ProjectGuid, pinfo);
+                _projectsByGuid.Add(pinfo.ProjectGuid, pinfo);
             }
             else
             {
                 Console.WriteLine("\nProjects with same GUID found ! " + pinfo.ProjectGuid);
                 Console.WriteLine(pinfo.Filename);
-                Console.WriteLine(m_ProjectsByGuid[pinfo.ProjectGuid].Filename);
+                Console.WriteLine(_projectsByGuid[pinfo.ProjectGuid].Filename);
             }
 
         }
@@ -472,14 +414,14 @@ namespace SolGen
         /// </summary>
         private void FindAllProjects(string folder)
         {
-            foreach (string file in Directory.GetFiles(folder, AllCSProj))
+            foreach (string file in Directory.GetFiles(folder, AllCsProj))
             {
                 ProcessProject(folder, file);
             }
 
             foreach (string subFolder in Directory.GetDirectories(folder, AllFiles))
             {
-                if (IsInIgnoreList(subFolder, m_Arguments.Ignore))
+                if (IsInIgnoreList(subFolder, _arguments.Ignore))
                 {
                     continue;
                 }
@@ -493,11 +435,11 @@ namespace SolGen
         /// </summary>
         private void GatherProjectReferences()
         {
-            foreach (ProjectInfo projectInfo in m_ProjectsByName.Values)
+            foreach (ProjectInfo projectInfo in _projectsByName.Values)
             {
-                Debug.Assert(projectInfo.MSBuildProject != null);
+                Debug.Assert(projectInfo.MsBuildProject != null);
 
-                foreach (BuildItemGroup buildItemGroup in projectInfo.MSBuildProject.ItemGroups)
+                foreach (BuildItemGroup buildItemGroup in projectInfo.MsBuildProject.ItemGroups)
                 {
                     foreach (BuildItem buildItem in buildItemGroup)
                     {
@@ -519,9 +461,9 @@ namespace SolGen
         private void CollectRelatedProjects(string projectFile, IDictionary<string, ProjectInfo> projects)
         {
             string upperCaseProjectFile = projectFile.ToUpper();
-            Debug.Assert(m_ProjectsByFile.ContainsKey(upperCaseProjectFile));
+            Debug.Assert(_projectsByFile.ContainsKey(upperCaseProjectFile));
 
-            ProjectInfo pinfo = m_ProjectsByFile[upperCaseProjectFile];
+            ProjectInfo pinfo = _projectsByFile[upperCaseProjectFile];
 
             if (!projects.ContainsKey(pinfo.AssemblyName))
             {
@@ -531,7 +473,7 @@ namespace SolGen
             foreach (string assembly in pinfo.References)
             {
                 ProjectInfo reference;
-                m_ProjectsByName.TryGetValue(assembly.ToUpper(), out reference);
+                _projectsByName.TryGetValue(assembly.ToUpper(), out reference);
                 if (reference != null)
                 {
                     CollectRelatedProjects(reference.Filename, projects);
@@ -541,7 +483,7 @@ namespace SolGen
 
         private void ResolveProjectGuids()
         {
-            foreach (ProjectInfo pinfo in m_ProjectsByName.Values)
+            foreach (ProjectInfo pinfo in _projectsByName.Values)
             {
                 List<string> newReferences = new List<string>();
                 foreach (string reference in pinfo.References)
@@ -550,9 +492,9 @@ namespace SolGen
                     if (reference.StartsWith("{"))
                     {
                         // must be a GUID...
-                        if (m_ProjectsByGuid.ContainsKey(reference))
+                        if (_projectsByGuid.ContainsKey(reference))
                         {
-                            newReference = m_ProjectsByGuid[reference].AssemblyName;
+                            newReference = _projectsByGuid[reference].AssemblyName;
                         }
                         else
                         {
@@ -569,32 +511,34 @@ namespace SolGen
 
         private void SetFolderParents()
         {
-            int rootIndex = m_Arguments.RootFolder.Length + 1;
-            foreach (ProjectInfo projectInfo in m_ProjectsByFile.Values)
+            int rootIndex = _arguments.RootFolder.Length + 1;
+            foreach (ProjectInfo projectInfo in _projectsByFile.Values)
             {
                 // TODO Substring unsafe; assumes Filename.StartsWith(RootFolder)
                 string projectPath = Path.GetDirectoryName(projectInfo.Filename).Substring(rootIndex);
                 string[] projParts = projectPath.Split(Path.DirectorySeparatorChar);
-                StringBuilder sb = new StringBuilder(m_Arguments.RootFolder);
+                StringBuilder sb = new StringBuilder(_arguments.RootFolder);
                 ProjectInfo parent = null;
                 for (int projIndex = 0; projIndex < projParts.Length; projIndex++)
                 {
                     string folderName = projParts[projIndex];
-                    ProjectInfo folderInfo = null;
+                    ProjectInfo folderInfo;
                     sb.Append(Path.DirectorySeparatorChar);
                     sb.Append(folderName);
-                    m_FoldersByPath.TryGetValue(sb.ToString(), out folderInfo);
+                    _foldersByPath.TryGetValue(sb.ToString(), out folderInfo);
                     if (folderInfo == null)
                     {
-                        folderInfo = new ProjectInfo();
-                        folderInfo.ProjectGuid = "{" + Guid.NewGuid().ToString().ToUpper() + "}";
-                        folderInfo.ProjectName = folderName;
-                        folderInfo.Filename = folderName;
+                        folderInfo = new ProjectInfo
+                        {
+                            ProjectGuid = "{" + Guid.NewGuid().ToString().ToUpper() + "}",
+                            ProjectName = folderName,
+                            Filename = folderName
+                        };
                         if (parent != null)
                         {
                             folderInfo.FolderGuid = parent.ProjectGuid;
                         }
-                        m_FoldersByPath.Add(sb.ToString(), folderInfo);
+                        _foldersByPath.Add(sb.ToString(), folderInfo);
                     }
                     parent = folderInfo;
                 }
@@ -607,19 +551,16 @@ namespace SolGen
 
         private void CreateProjectReferenceProjectFile(IDictionary<string, ProjectInfo> projects)
         {
-            foreach (ProjectInfo projectInfo in projects.Values)
+            foreach (var projectInfo in projects.Values.Where(projectInfo => !_projectRefProjectFilesHandled.Contains(projectInfo)))
             {
-                if (m_ProjectRefProjectFilesHandled.Contains(projectInfo))
-                {
-                    continue;
-                }
-                Debug.Assert(projectInfo.MSBuildProject != null);
+                Debug.Assert(projectInfo.MsBuildProject != null);
 
-                List<BuildItem> assemblyReferencesToMove = new List<BuildItem>();
+                var assemblyReferencesToMove = new List<BuildItem>();
                 BuildItemGroup assemblyReferencesBuildItemGroup = null;
                 BuildItemGroup projectReferencesBuildItemGroup = null;
+                if ( projectInfo.MsBuildProject.ItemGroups == null ) continue;
 
-                foreach (BuildItemGroup buildItemGroup in projectInfo.MSBuildProject.ItemGroups)
+                foreach (BuildItemGroup buildItemGroup in projectInfo.MsBuildProject.ItemGroups)
                 {
                     foreach (BuildItem buildItem in buildItemGroup)
                     {
@@ -631,7 +572,7 @@ namespace SolGen
 
                             // Take a look at all assembly references to identify those to convert to project references
                             ProjectInfo referencedProjectInfo;
-                            string projectName = GetAssemblyNameFromFullyQualifiedName(buildItem.Include);
+                            var projectName = GetAssemblyNameFromFullyQualifiedName(buildItem.Include);
                             projects.TryGetValue(projectName, out referencedProjectInfo);
                             if (referencedProjectInfo != null)
                             {
@@ -657,7 +598,7 @@ namespace SolGen
                     // If no project reference group exists, create one.
                     if (projectReferencesBuildItemGroup == null)
                     {
-                        projectReferencesBuildItemGroup = projectInfo.MSBuildProject.AddNewItemGroup();
+                        projectReferencesBuildItemGroup = projectInfo.MsBuildProject.AddNewItemGroup();
                     }
 
                     // Remove assembly reference and replace by corresponding project reference.
@@ -665,7 +606,7 @@ namespace SolGen
                     {
                         assemblyReferencesBuildItemGroup.RemoveItem(buildItem);
                         string replacementAssemblyName = GetAssemblyNameFromFullyQualifiedName(buildItem.Include);
-                        var replacementProjectInfo = m_ProjectsByName[replacementAssemblyName.ToUpperInvariant()];
+                        var replacementProjectInfo = _projectsByName[replacementAssemblyName.ToUpperInvariant()];
                         string remplacementInclude = GetRelativePath(Path.GetDirectoryName(projectInfo.Filename), replacementProjectInfo.Filename);
                         BuildItem newBuildItem = projectReferencesBuildItemGroup.AddNewItem(ProjectReference, remplacementInclude);
                         newBuildItem.SetMetadata("Project", replacementProjectInfo.ProjectGuid);
@@ -675,33 +616,30 @@ namespace SolGen
                 }
 
                 StringBuilder sb = new StringBuilder(Path.ChangeExtension(projectInfo.Filename, null));
-                if (m_Arguments.Overwrite == false)
+                if (_arguments.Overwrite == false)
                 {
                     sb.Append(ProjectRefs);
                 }
-                sb.Append(CSProjFileExtension);
+                sb.Append(CsProjFileExtension);
                 string projectFileName = sb.ToString();
-                projectInfo.MSBuildProject.Save(projectFileName);
-                m_ProjectRefProjectFilesHandled.Add(projectInfo);
+                projectInfo.MsBuildProject.Save(projectFileName);
+                _projectRefProjectFilesHandled.Add(projectInfo);
             }
         }
 
         private void CreateAssemblyReferenceProjectFile(IDictionary<string, ProjectInfo> projects)
         {
-            foreach (ProjectInfo projectInfo in projects.Values)
+            foreach (var projectInfo in projects.Values.Where(projectInfo => !_assemblyRefProjectFilesHandled.Contains(projectInfo)))
             {
-                if (m_AssemblyRefProjectFilesHandled.Contains(projectInfo))
-                {
-                    continue;
-                }
+                Debug.Assert(projectInfo.MsBuildProject != null);
 
-                Debug.Assert(projectInfo.MSBuildProject != null);
-
-                List<BuildItem> projectReferencesToMove = new List<BuildItem>();
+                var projectReferencesToMove = new List<BuildItem>();
                 BuildItemGroup assemblyReferencesBuildItemGroup = null;
                 BuildItemGroup projectReferencesBuildItemGroup = null;
 
-                foreach (BuildItemGroup buildItemGroup in projectInfo.MSBuildProject.ItemGroups)
+                if (projectInfo.MsBuildProject.ItemGroups == null) continue;
+
+                foreach (BuildItemGroup buildItemGroup in projectInfo.MsBuildProject.ItemGroups)
                 {
                     foreach (BuildItem buildItem in buildItemGroup)
                     {
@@ -718,8 +656,8 @@ namespace SolGen
 
                             // Take a look at all project references to identify those to convert to assembly references
                             ProjectInfo referencedProjectInfo;
-                            string projectGuid = buildItem.GetMetadata(Project);
-                            m_ProjectsByGuid.TryGetValue(projectGuid, out referencedProjectInfo);
+                            var projectGuid = buildItem.GetMetadata(Project);
+                            _projectsByGuid.TryGetValue(projectGuid, out referencedProjectInfo);
                             if (referencedProjectInfo != null)
                             {
                                 projectReferencesToMove.Add(buildItem);
@@ -729,34 +667,30 @@ namespace SolGen
                 }
 
                 // If no project references found or none to move, nothing to change; save file as-is
-                if (projectReferencesBuildItemGroup == null || projectReferencesToMove.Count == 0)
-                {
-                    //Console.WriteLine("Nothing to do.");
-                }
-                else
+                if ( projectReferencesBuildItemGroup != null && projectReferencesToMove.Count > 0 )
                 {
                     if (assemblyReferencesBuildItemGroup == null)
                     {
-                        assemblyReferencesBuildItemGroup = projectInfo.MSBuildProject.AddNewItemGroup();
+                        assemblyReferencesBuildItemGroup = projectInfo.MsBuildProject.AddNewItemGroup();
                     }
 
-                    foreach (BuildItem buildItem in projectReferencesToMove)
+                    foreach (var buildItem in projectReferencesToMove)
                     {
                         projectReferencesBuildItemGroup.RemoveItem(buildItem);
 
                         // Get the assembly name corresponding to the project GUID 
-                        foreach (ProjectInfo pinfo in projects.Values)
+                        foreach (var pinfo in projects.Values)
                         {
                             if (pinfo.ProjectGuid == buildItem.GetMetadata(Project))
                             {
-                                BuildItem newBuildItem =
+                                var newBuildItem =
                                     assemblyReferencesBuildItemGroup.AddNewItem(Reference, pinfo.AssemblyName);
                                 newBuildItem.SetMetadata("Private", bool.FalseString);
                                 newBuildItem.SetMetadata("SpecificVersion", bool.FalseString);
-                                if (m_Arguments.HintPath != string.Empty)
+                                if (_arguments.HintPath != string.Empty)
                                 {
-                                    string relative =
-                                        GetRelativePath(Path.GetDirectoryName(projectInfo.Filename), m_Arguments.HintPath);
+                                    var relative =
+                                        GetRelativePath(Path.GetDirectoryName(projectInfo.Filename), _arguments.HintPath);
                                     newBuildItem.SetMetadata("HintPath", Path.Combine(relative, pinfo.AssemblyName) + ".dll");
                                 }
                                 break;
@@ -765,14 +699,14 @@ namespace SolGen
                     }
                 }
                 StringBuilder sb = new StringBuilder(Path.ChangeExtension(projectInfo.Filename, null));
-                if (m_Arguments.Overwrite == false)
+                if (_arguments.Overwrite == false)
                 {
                     sb.Append(AssemblyRefs);
                 }
-                sb.Append(CSProjFileExtension);
+                sb.Append(CsProjFileExtension);
                 string projectFileName = sb.ToString();
-                projectInfo.MSBuildProject.Save(projectFileName);
-                m_AssemblyRefProjectFilesHandled.Add(projectInfo);
+                projectInfo.MsBuildProject.Save(projectFileName);
+                _assemblyRefProjectFilesHandled.Add(projectInfo);
             }
         }
 
@@ -781,12 +715,12 @@ namespace SolGen
         /// </summary>
         private void CreateProjectFiles(IDictionary<string, ProjectInfo> projects)
         {
-            if (m_Arguments.Refs == RefTypes.Project || m_Arguments.Refs == RefTypes.Both)
+            if (_arguments.Refs == RefTypes.Project || _arguments.Refs == RefTypes.Both)
             {
                 CreateProjectReferenceProjectFile(projects);
             }
 
-            if (m_Arguments.Refs == RefTypes.Assembly || m_Arguments.Refs == RefTypes.Both)
+            if (_arguments.Refs == RefTypes.Assembly || _arguments.Refs == RefTypes.Both)
             {
                 CreateAssemblyReferenceProjectFile(projects);
             }
@@ -806,23 +740,20 @@ namespace SolGen
             writer.WriteLine("# Visual Studio 2010");
 
             // Folders
-            if (m_Arguments.Solution == SolutionTypes.Deep)
+            if (_arguments.Solution == SolutionTypes.Deep)
             {
-                foreach (KeyValuePair<string, ProjectInfo> kvp in m_FoldersByPath)
+                foreach (var kvp in _foldersByPath.Where(kvp => kvp.Key.StartsWith(Path.GetDirectoryName(solutionFile) + Path.DirectorySeparatorChar)))
                 {
-                    if (kvp.Key.StartsWith(Path.GetDirectoryName(solutionFile) + Path.DirectorySeparatorChar))
-                    {
-                        WriteProjectEntry(writer, kvp.Value, true, Path.GetDirectoryName(solutionFile)); 
-                    }
+                    WriteProjectEntry(writer, kvp.Value, true, Path.GetDirectoryName(solutionFile));
                 }
             }
 
             // Projects
-            foreach (ProjectInfo projectInfo in projects.Values)
+            foreach (var projectInfo in projects.Values)
             {
-                StringBuilder sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectInfo.Filename), Path.GetFileNameWithoutExtension(projectInfo.Filename)));
+                var sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectInfo.Filename), Path.GetFileNameWithoutExtension(projectInfo.Filename)));
 
-                if (m_Arguments.Overwrite == false)
+                if (_arguments.Overwrite == false)
                 {
                     if (refType == RefTypes.Project)
                     {
@@ -833,7 +764,7 @@ namespace SolGen
                         sb.Append(AssemblyRefs);
                     }
                 }
-                sb.Append(CSProjFileExtension);
+                sb.Append(CsProjFileExtension);
 
                 // Create a copy of the project information to avoid modifying the project information in the reference
                 // m_ProjectsByName, m_ProjectsByFile, m_ProjectsByGuid data structures.
@@ -843,15 +774,15 @@ namespace SolGen
             }
 
             // Project and folder relations
-            if (m_Arguments.Solution == SolutionTypes.Deep)
+            if (_arguments.Solution == SolutionTypes.Deep)
             {
                 writer.WriteLine("Global");
                 writer.WriteLine("\tGlobalSection(NestedProjects) = preSolution");
-                string format = "\t\t{0} = {1}";
+                const string format = "\t\t{0} = {1}";
 
                 // Folder relations
                 // TODO: improve; output only required folder relations
-                foreach (ProjectInfo folderInfo in m_FoldersByPath.Values)
+                foreach (ProjectInfo folderInfo in _foldersByPath.Values)
                 {
                     if (folderInfo.ProjectGuid != null && folderInfo.FolderGuid != null)
                     {
@@ -863,7 +794,7 @@ namespace SolGen
                 foreach (ProjectInfo projectInfo in projects.Values)
                 {
                     ProjectInfo folderInfo = null;
-                    m_FoldersByPath.TryGetValue(Path.GetDirectoryName(projectInfo.Filename), out folderInfo);
+                    _foldersByPath.TryGetValue(Path.GetDirectoryName(projectInfo.Filename), out folderInfo);
                     if (folderInfo != null)
                     {
                         writer.WriteLine(format, projectInfo.ProjectGuid, folderInfo.ProjectGuid);
@@ -892,12 +823,12 @@ namespace SolGen
                 {
                     projectPath = projectInfo.Filename;
                 }
-                guid = CSProjGUID;
+                guid = CsProjGuid;
             }
             else
             {
                 projectPath = projectInfo.ProjectName;
-                guid = FolderGUID;
+                guid = FolderGuid;
             }
 
             string format = "Project('{0}') = '{1}', '{2}', '{3}'".Replace('\'', '"');
@@ -910,11 +841,13 @@ namespace SolGen
             Debug.Assert(projectFile != null);
 
             // Create single project solution file for project with assembly references
-            Dictionary<string, ProjectInfo> singleProject = new Dictionary<string, ProjectInfo>();
-            singleProject.Add(projectFile, m_ProjectsByFile[projectFile.ToUpper()]);
+            var singleProject = new Dictionary<string, ProjectInfo>
+            {
+                {projectFile, _projectsByFile[projectFile.ToUpper()]}
+            };
 
             StringBuilder sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectFile), Path.GetFileNameWithoutExtension(projectFile)));
-            if (m_Arguments.Overwrite == false)
+            if (_arguments.Overwrite == false)
             {
                 sb.Append(AssemblyRefs);
             }
@@ -924,20 +857,20 @@ namespace SolGen
             WriteSolutionFile(singleProjectSolutionFile, singleProject, RefTypes.Assembly);
 
             // Create "complete" solution with all projects required to fulfill project references
-            if (m_Arguments.Refs == RefTypes.Project || m_Arguments.Refs == RefTypes.Both)
+            if (_arguments.Refs == RefTypes.Project || _arguments.Refs == RefTypes.Both)
             {
                 string assemblyRefsSolutionFile = Path.Combine(Path.GetDirectoryName(projectFile), Path.GetFileNameWithoutExtension(projectFile)) + ProjectRefs + SolutionFileExtension;
                 WriteSolutionFile(assemblyRefsSolutionFile, projects, RefTypes.Project);
             }
         }
 
-        private void CreateTopLevelSolutionFiles(string folder, Dictionary<string, Dictionary<string, ProjectInfo>> allRelatedProjects)
+        private void CreateTopLevelSolutionFiles(string folder, IDictionary<string, Dictionary<string, ProjectInfo>> allRelatedProjects)
         {
-            Debug.Assert(folder != null && folder != string.Empty && Directory.Exists(folder));
+            Debug.Assert(!string.IsNullOrEmpty(folder) && Directory.Exists(folder));
 
             // No need to create a top-level solution file if root folder contains a .csproj file
             // No need to create a top-level solution file if root folder contains no subfolders
-            if (Directory.GetFiles(folder, AllCSProj).Length > 0 || Directory.GetDirectories(folder).Length == 0)
+            if (Directory.GetFiles(folder, AllCsProj).Length > 0 || Directory.GetDirectories(folder).Length == 0)
             {
                 return;
             }
@@ -946,13 +879,13 @@ namespace SolGen
             foreach (string subFolder in Directory.GetDirectories(folder, AllFiles))
             {
                 // Ignore sub-folders in ignore list
-                if (IsInIgnoreList(subFolder, m_Arguments.Ignore))
+                if (IsInIgnoreList(subFolder, _arguments.Ignore))
                 {
                     continue;
                 }
 
                 // Ignore sub-folders that contain a project file
-                if (Directory.GetFiles(subFolder, AllCSProj).Length > 0)
+                if (Directory.GetFiles(subFolder, AllCsProj).Length > 0)
                 {
                     continue;
                 }
@@ -962,7 +895,7 @@ namespace SolGen
 
             // Create a solution containing a list of all project files under this subfolder
             IDictionary<string, ProjectInfo> projects = new Dictionary<string, ProjectInfo>();
-            foreach (KeyValuePair<string, ProjectInfo> kvp in m_ProjectsByFile)
+            foreach (KeyValuePair<string, ProjectInfo> kvp in _projectsByFile)
             {
                 if (kvp.Key.StartsWith(folder, StringComparison.InvariantCultureIgnoreCase) && !projects.ContainsKey(kvp.Key))
                 {
@@ -996,7 +929,7 @@ namespace SolGen
                 sb.Append('.');
                 sb.Append(parts[parts.Length - 1]);
   
-                if (m_Arguments.Overwrite == false)
+                if (_arguments.Overwrite == false)
                 {
                     sb.Append(ProjectRefs);
                 }
@@ -1017,7 +950,7 @@ namespace SolGen
         {
             Header();
 
-            if (!ParseArguments(args, out m_Arguments))
+            if (!ParseArguments(args, out _arguments))
             {
                 return;
             }
@@ -1025,7 +958,7 @@ namespace SolGen
             Console.WriteLine("\nProbing for projects...");
 
             // Find all projects under that specified folder
-            foreach (string folder in m_Arguments.ProbeFolders)
+            foreach (string folder in _arguments.ProbeFolders)
             {
                 FindAllProjects(folder);
             }
@@ -1042,23 +975,24 @@ namespace SolGen
             // For all project files found under the specified folder, create ProjectRefs.csproj and/or
             // AssemblyRefs.csproj file(s) that contain(s) project and/or assembly references.
             Console.WriteLine("\nCreating project and solution files under:");
-            Console.WriteLine(m_Arguments.RootFolder + "...");
+            Console.WriteLine(_arguments.RootFolder + "...");
 
             // Keep track of the related projects for generating top-level solutions.
             Dictionary<string, Dictionary<string, ProjectInfo>> allRelatedProjects = new Dictionary<string, Dictionary<string, ProjectInfo>>();
 
-            foreach (string projectFile in m_ProjectFiles)
+            foreach (string projectFile in _projectFiles)
             {
-                string startFolder = Path.Combine(m_Arguments.RootFolder, " ").Trim().ToUpper();
+                string startFolder = Path.Combine(_arguments.RootFolder, " ").Trim().ToUpper();
                 if (!projectFile.ToUpper().StartsWith(startFolder))
                 {
                     continue;
                 }
 
-                Console.WriteLine(projectFile.Replace(m_Arguments.RootFolder, ""));
+                Console.WriteLine(projectFile.Replace(_arguments.RootFolder, ""));
 
                 // Find related projects
                 Dictionary<string, ProjectInfo> projects = new Dictionary<string, ProjectInfo>();
+
                 CollectRelatedProjects(projectFile, projects);
                 allRelatedProjects.Add(projectFile, projects);
 
@@ -1071,7 +1005,7 @@ namespace SolGen
 
             // Create top-level solution file
             Console.WriteLine("\nCreating top-level solution files...");
-            CreateTopLevelSolutionFiles(m_Arguments.RootFolder, allRelatedProjects);
+            CreateTopLevelSolutionFiles(_arguments.RootFolder, allRelatedProjects);
 
             Console.WriteLine("Done.");
         }
