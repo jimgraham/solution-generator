@@ -458,8 +458,14 @@ namespace SolGen
             }
         }
 
-        private void CollectRelatedProjects(string projectFile, IDictionary<string, ProjectInfo> projects)
+        private void CollectRelatedProjects(string projectFile, IDictionary<string, ProjectInfo> projects, 
+            IList<string> seenProjects = null)
         {
+            if (seenProjects == null)
+            {
+                seenProjects = new List<string>();
+            }
+
             string upperCaseProjectFile = projectFile.ToUpper();
             Debug.Assert(_projectsByFile.ContainsKey(upperCaseProjectFile));
 
@@ -469,6 +475,10 @@ namespace SolGen
             {
                 projects.Add(pinfo.AssemblyName, pinfo);
             }
+            if (!seenProjects.Contains(pinfo.AssemblyName))
+            {
+                seenProjects.Add(pinfo.AssemblyName);
+            }
 
             foreach (string assembly in pinfo.References)
             {
@@ -476,9 +486,17 @@ namespace SolGen
                 _projectsByName.TryGetValue(assembly.ToUpper(), out reference);
                 if (reference != null)
                 {
-                    CollectRelatedProjects(reference.Filename, projects);
+                    if (seenProjects.Contains(reference.AssemblyName))
+                    {
+                        seenProjects.Add(reference.AssemblyName);
+                        var referenceStack = "Circular reference: \n" + string.Join("\n", seenProjects);
+                        throw new CircularReferenceException(referenceStack);
+                    }
+
+                    CollectRelatedProjects(reference.Filename, projects, seenProjects);
                 }
             }
+            seenProjects.Remove(pinfo.AssemblyName);
         }
 
         private void ResolveProjectGuids()
