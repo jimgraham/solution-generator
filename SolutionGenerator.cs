@@ -123,6 +123,7 @@ namespace SolGen
             Console.WriteLine(" /root:folder, the root folder where to start looking for projects");
             Console.WriteLine("</refs:[assembly|project|both]>, optional, default: 'both'");
             Console.WriteLine("</ignore:folder,(...)>, optional, the list of sub-folders to ignore (e.g.: .svn)");
+            Console.WriteLine("</ignorePattern:match,(...)>, optional, the list of text matches in project names to ignore (e.g.: Test)");
             Console.WriteLine("</probe:folder,(...)>, optional, additional folders where to look for referenced projects\n");
             Console.WriteLine("</overwrite>, optional, when 'refs' is 'assembly' or 'project', overwrite existing files\n");
             Console.WriteLine("</solution:[flat|deep]>, optional, organize projects in folder structure, default: 'flat'\n");
@@ -136,7 +137,8 @@ namespace SolGen
             }
         }
 
-        private static bool ParseArguments(string[] args, out Arguments arguments)
+        //TODO: JAG move to argument
+        private static bool ParseArguments(ICollection<string> args, out Arguments arguments)
         {
             string probe = null;
             string refs = null;
@@ -147,13 +149,13 @@ namespace SolGen
 
             arguments = new Arguments();
 
-            if (args.Length == 0)
+            if (args.Count == 0)
             {
                 Usage();
                 return false;
             }
 
-            foreach (string str in args)
+            foreach (var str in args)
             {
                 GetArg(str, "/probe:", ref probe);
                 GetArg(str, "/hintpath:", ref arguments.HintPath);
