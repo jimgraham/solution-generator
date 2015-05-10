@@ -105,7 +105,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Arguments.cs" />
-    <Compile Include="CircularReferenceException.cs" />
+    <Compile Include="CircularAssemblyReferenceException.cs" />
     <Compile Include="Enums.cs" />
     <Compile Include="ProjectInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

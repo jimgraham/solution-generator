@@ -504,8 +504,7 @@ namespace SolGen
                     if (seenProjects.Contains(reference.AssemblyName))
                     {
                         seenProjects.Add(reference.AssemblyName);
-                        var referenceStack = "Circular reference: \n" + string.Join("\n", seenProjects);
-                        throw new CircularReferenceException(referenceStack);
+                        throw new CircularAssemblyReferenceException(seenProjects);
                     }
 
                     CollectRelatedProjects(reference.Filename, projects, seenProjects);
