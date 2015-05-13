@@ -766,95 +766,89 @@ namespace SolGen
         {
             Debug.Assert(solutionFile != null);
 
-            StreamWriter writer = new StreamWriter(solutionFile);
-
-            writer.WriteLine("Microsoft Visual Studio Solution File, Format Version 11.00");
-            writer.WriteLine("# Visual Studio 2010");
-
-            // Folders
-            if (_arguments.Solution == SolutionTypes.Deep)
+            using (var writer = new StreamWriter(solutionFile))
             {
-                foreach (var kvp in _foldersByPath.Where(kvp => kvp.Key.StartsWith(Path.GetDirectoryName(solutionFile) + Path.DirectorySeparatorChar)))
-                {
-                    WriteProjectEntry(writer, kvp.Value, true, Path.GetDirectoryName(solutionFile));
-                }
-            }
+                writer.WriteLine("Microsoft Visual Studio Solution File, Format Version 11.00");
+                writer.WriteLine("# Visual Studio 2010");
 
-            // Projects
-            foreach (var projectInfo in projects.Values)
-            {
-                var sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectInfo.Filename), Path.GetFileNameWithoutExtension(projectInfo.Filename)));
-
-                if (_arguments.Overwrite == false)
+                // Folders
+                if (_arguments.Solution == SolutionTypes.Deep)
                 {
-                    if (refType == RefTypes.Project)
+                    foreach ( var kvp in _foldersByPath.Where( kvp => kvp.Key.StartsWith(Path.GetDirectoryName(solutionFile) + Path.DirectorySeparatorChar)))
                     {
-                        sb.Append(ProjectRefs);
-                    }
-                    else if (refType == RefTypes.Assembly)
-                    {
-                        sb.Append(AssemblyRefs);
+                        WriteProjectEntry(writer, kvp.Value, true, Path.GetDirectoryName(solutionFile));
                     }
                 }
-                sb.Append(CsProjFileExtension);
 
-                // Create a copy of the project information to avoid modifying the project information in the reference
-                // m_ProjectsByName, m_ProjectsByFile, m_ProjectsByGuid data structures.
-                var projectInfoCopy = projectInfo.ShallowCopy();
-                projectInfoCopy.Filename = sb.ToString();
-                WriteProjectEntry(writer, projectInfoCopy, false, Path.GetDirectoryName(solutionFile)); 
-            }
-
-            // Project and folder relations
-            if (_arguments.Solution == SolutionTypes.Deep)
-            {
-                writer.WriteLine("Global");
-                writer.WriteLine("\tGlobalSection(NestedProjects) = preSolution");
-                const string format = "\t\t{0} = {1}";
-
-                // Folder relations
-                // TODO: improve; output only required folder relations
-                foreach (ProjectInfo folderInfo in _foldersByPath.Values)
+                // Projects
+                foreach (var projectInfo in projects.Values)
                 {
-                    if (folderInfo.ProjectGuid != null && folderInfo.FolderGuid != null)
+                    var sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectInfo.Filename), Path.GetFileNameWithoutExtension(projectInfo.Filename)));
+
+                    if (_arguments.Overwrite == false)
+                    {
+                        switch (refType)
+                        {
+                            case RefTypes.Project:
+                                sb.Append(ProjectRefs);
+                                break;
+                            case RefTypes.Assembly:
+                                sb.Append(AssemblyRefs);
+                                break;
+                        }
+                    }
+                    sb.Append(CsProjFileExtension);
+
+                    // Create a copy of the project information to avoid modifying the project information in the reference
+                    // m_ProjectsByName, m_ProjectsByFile, m_ProjectsByGuid data structures.
+                    var projectInfoCopy = projectInfo.ShallowCopy();
+                    projectInfoCopy.Filename = sb.ToString();
+                    WriteProjectEntry(writer, projectInfoCopy, false, Path.GetDirectoryName(solutionFile));
+                }
+
+                // Project and folder relations
+                if (_arguments.Solution == SolutionTypes.Deep)
+                {
+                    writer.WriteLine("Global");
+                    writer.WriteLine("\tGlobalSection(NestedProjects) = preSolution");
+                    const string format = "\t\t{0} = {1}";
+
+                    // Folder relations
+                    // TODO: improve; output only required folder relations
+                    foreach (var folderInfo in _foldersByPath.Values.Where(i => i.ProjectGuid != null && i.FolderGuid != null))
                     {
                         writer.WriteLine(format, folderInfo.ProjectGuid, folderInfo.FolderGuid);
                     }
-                }  
- 
-            // Project relations
-                foreach (ProjectInfo projectInfo in projects.Values)
-                {
-                    ProjectInfo folderInfo = null;
-                    _foldersByPath.TryGetValue(Path.GetDirectoryName(projectInfo.Filename), out folderInfo);
-                    if (folderInfo != null)
-                    {
-                        writer.WriteLine(format, projectInfo.ProjectGuid, folderInfo.ProjectGuid);
-                    }
-                }
 
-                writer.WriteLine("\tEndGlobalSection");
-                writer.WriteLine("EndGlobal");
+                    // Project relations
+                    foreach (var projectInfo in projects.Values)
+                    {
+                        ProjectInfo folderInfo;
+                        _foldersByPath.TryGetValue(Path.GetDirectoryName(projectInfo.Filename), out folderInfo);
+                        if (folderInfo != null)
+                        {
+                            writer.WriteLine(format, projectInfo.ProjectGuid, folderInfo.ProjectGuid);
+                        }
+                    }
+
+                    writer.WriteLine("\tEndGlobalSection");
+                    writer.WriteLine("EndGlobal");
+                }
                 writer.Close();
             }
         }
 
         private static void WriteProjectEntry(TextWriter writer, ProjectInfo projectInfo, bool folder, string rootFolder)
         {
-            string projectPath = null;
-            string guid = null;
+            string projectPath;
+            string guid;
 
             if (folder == false)
             {
                 // TODO
-                if (projectInfo.Filename.StartsWith(rootFolder))
-                {
-                projectPath = projectInfo.Filename.Substring(rootFolder.Length + 1);
-                }
-                else
-                {
-                    projectPath = projectInfo.Filename;
-                }
+                projectPath = projectInfo.Filename.StartsWith(rootFolder) 
+                    ? projectInfo.Filename.Substring(rootFolder.Length + 1)
+                    : projectInfo.Filename;
                 guid = CsProjGuid;
             }
             else
@@ -863,7 +857,7 @@ namespace SolGen
                 guid = FolderGuid;
             }
 
-            string format = "Project('{0}') = '{1}', '{2}', '{3}'".Replace('\'', '"');
+            var format = "Project('{0}') = '{1}', '{2}', '{3}'".Replace('\'', '"');
             writer.WriteLine(format, guid, projectInfo.ProjectName, projectPath, projectInfo.ProjectGuid);
             writer.WriteLine("EndProject");
         }
@@ -878,20 +872,20 @@ namespace SolGen
                 {projectFile, _projectsByFile[projectFile.ToUpper()]}
             };
 
-            StringBuilder sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectFile), Path.GetFileNameWithoutExtension(projectFile)));
+            var sb = new StringBuilder(Path.Combine(Path.GetDirectoryName(projectFile), Path.GetFileNameWithoutExtension(projectFile)));
             if (_arguments.Overwrite == false)
             {
                 sb.Append(AssemblyRefs);
             }
             sb.Append(SolutionFileExtension);
-            string singleProjectSolutionFile = sb.ToString();
+            var singleProjectSolutionFile = sb.ToString();
 
             WriteSolutionFile(singleProjectSolutionFile, singleProject, RefTypes.Assembly);
 
             // Create "complete" solution with all projects required to fulfill project references
             if (_arguments.Refs == RefTypes.Project || _arguments.Refs == RefTypes.Both)
             {
-                string assemblyRefsSolutionFile = Path.Combine(Path.GetDirectoryName(projectFile), Path.GetFileNameWithoutExtension(projectFile)) + ProjectRefs + SolutionFileExtension;
+                var assemblyRefsSolutionFile = Path.Combine(Path.GetDirectoryName(projectFile), Path.GetFileNameWithoutExtension(projectFile)) + ProjectRefs + SolutionFileExtension;
                 WriteSolutionFile(assemblyRefsSolutionFile, projects, RefTypes.Project);
             }
         }
