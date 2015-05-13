@@ -640,10 +640,10 @@ namespace SolGen
                         string replacementAssemblyName = GetAssemblyNameFromFullyQualifiedName(buildItem.Include);
                         var replacementProjectInfo = _projectsByName[replacementAssemblyName.ToUpperInvariant()];
                         string remplacementInclude = GetRelativePath(Path.GetDirectoryName(projectInfo.Filename), replacementProjectInfo.Filename);
+                        
                         BuildItem newBuildItem = projectReferencesBuildItemGroup.AddNewItem(ProjectReference, remplacementInclude);
                         newBuildItem.SetMetadata("Project", replacementProjectInfo.ProjectGuid);
                         newBuildItem.SetMetadata("Name", replacementProjectInfo.ProjectName);
-                        newBuildItem.SetMetadata("Private", bool.FalseString);
                     }
                 }
 
